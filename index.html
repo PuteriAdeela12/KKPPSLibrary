@@ -1,0 +1,194 @@
+---
+layout: null
+---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Library Automation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        .status-badge { @apply px-2 py-1 rounded-full text-[10px] font-bold uppercase; }
+        @keyframes slide-in {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-slide-in { animation: slide-in 0.3s ease-out forwards; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen font-sans">
+
+    <div class="max-w-md mx-auto p-4 sm:p-6">
+        <header class="mb-8 text-center">
+            <h1 class="text-2xl font-bold text-slate-900">Library Automation</h1>
+            <p class="text-slate-500">Scan barcode to Borrow or Return</p>
+        </header>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
+            
+            <div class="flex bg-slate-100 p-1 rounded-lg mb-6">
+                <button id="tab-borrow" onclick="setMode('BORROW')" class="flex-1 py-2 rounded-md text-sm font-medium bg-white shadow-sm text-blue-600">Borrow</button>
+                <button id="tab-return" onclick="setMode('RETURN')" class="flex-1 py-2 rounded-md text-sm font-medium text-slate-600">Return</button>
+            </div>
+
+            <div id="scanner-container" class="relative mb-6">
+                <div id="reader" class="overflow-hidden rounded-xl bg-slate-100"></div>
+                <div id="scanner-placeholder" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-slate-100 rounded-xl border-2 border-dashed border-slate-300">
+                    <p class="text-slate-400 text-sm">Scanner paused</p>
+                    <button onclick="startScanner()" class="mt-2 text-blue-600 font-medium">Restart Camera</button>
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Student ID</label>
+                    <input type="text" id="studentId" placeholder="Scan or type Student ID" 
+                        class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Book Barcode</label>
+                    <input type="text" id="bookId" placeholder="Scan or type Book ID" 
+                        class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all">
+                </div>
+
+                <button id="submitBtn" onclick="submitTransaction()" 
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 active:scale-[0.98]">
+                    Confirm Transaction
+                </button>
+            </div>
+        </div>
+
+        <div id="feedback" class="hidden p-4 rounded-xl text-center mb-4 transition-all">
+            <p id="feedbackText" class="font-medium"></p>
+        </div>
+
+        <div class="mt-8">
+            <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-widest mb-4">Recent Sessions</h2>
+            <div id="history" class="space-y-3"></div>
+        </div>
+    </div>
+
+    <script>
+        const SCRIPT_URL = ""; 
+        let html5QrCode;
+        let currentMode = 'BORROW';
+
+        async function startScanner() {
+            // Safety check: close existing scanner if it exists
+            if (html5QrCode) {
+                try { await html5QrCode.stop(); } catch (e) { console.log(e); }
+            }
+            
+            html5QrCode = new Html5Qrcode("reader");
+            const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+
+            try {
+                await html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess);
+                document.getElementById('scanner-placeholder').classList.add('hidden');
+            } catch (err) {
+                console.error("Camera error:", err);
+                showFeedback("Camera access denied", "error");
+            }
+        }
+
+        function onScanSuccess(decodedText) {
+            const studentInput = document.getElementById('studentId');
+            const bookInput = document.getElementById('bookId');
+
+            if (!studentInput.value) {
+                studentInput.value = decodedText;
+                showFeedback("Student ID captured", "success");
+            } else {
+                bookId.value = decodedText;
+                showFeedback("Book ID captured", "success");
+            }
+            if (window.navigator.vibrate) window.navigator.vibrate(50);
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            const bTab = document.getElementById('tab-borrow');
+            const rTab = document.getElementById('tab-return');
+            const submitBtn = document.getElementById('submitBtn');
+
+            if (mode === 'BORROW') {
+                bTab.className = "flex-1 py-2 rounded-md text-sm font-medium bg-white shadow-sm text-blue-600";
+                rTab.className = "flex-1 py-2 rounded-md text-sm font-medium text-slate-600";
+                submitBtn.innerText = "Confirm Borrowing";
+                submitBtn.className = submitBtn.className.replace(/bg-\w+-600/g, 'bg-blue-600');
+            } else {
+                rTab.className = "flex-1 py-2 rounded-md text-sm font-medium bg-white shadow-sm text-emerald-600";
+                bTab.className = "flex-1 py-2 rounded-md text-sm font-medium text-slate-600";
+                submitBtn.innerText = "Confirm Return";
+                submitBtn.className = submitBtn.className.replace(/bg-\w+-600/g, 'bg-emerald-600');
+            }
+        }
+
+        async function submitTransaction() {
+            const studentId = document.getElementById('studentId').value;
+            const bookId = document.getElementById('bookId').value;
+            const submitBtn = document.getElementById('submitBtn');
+
+            if (!studentId || !bookId) {
+                showFeedback("Please provide both IDs", "error");
+                return;
+            }
+
+            const data = { studentId, bookId, action: currentMode, timestamp: new Date().toISOString() };
+            submitBtn.disabled = true;
+            submitBtn.innerText = "Processing...";
+
+            try {
+                if (!SCRIPT_URL) {
+                    await new Promise(r => setTimeout(r, 1000));
+                    handleSuccess(data);
+                } else {
+                    await fetch(SCRIPT_URL, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                    handleSuccess(data);
+                }
+            } catch (error) {
+                showFeedback("Sync Error: " + error.message, "error");
+            } finally {
+                submitBtn.disabled = false;
+                setMode(currentMode);
+            }
+        }
+
+        function handleSuccess(data) {
+            showFeedback(`${currentMode} Successful!`, "success");
+            addToHistory(data);
+            document.getElementById('bookId').value = "";
+            document.getElementById('bookId').focus();
+        }
+
+        function showFeedback(msg, type) {
+            const div = document.getElementById('feedback');
+            const text = document.getElementById('feedbackText');
+            div.className = `p-4 rounded-xl text-center mb-4 animate-bounce ${type === 'error' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`;
+            text.innerText = msg;
+            div.classList.remove('hidden');
+            setTimeout(() => div.classList.add('hidden'), 3000);
+        }
+
+        function addToHistory(data) {
+            const history = document.getElementById('history');
+            const div = document.createElement('div');
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            div.className = "bg-white p-3 rounded-xl border border-slate-100 flex justify-between items-center text-sm shadow-sm animate-slide-in";
+            div.innerHTML = `<div><span class="font-bold text-slate-800">${data.bookId}</span><p class="text-xs text-slate-400">ID: ${data.studentId}</p></div>
+                <div class="text-right"><span class="status-badge ${data.action === 'BORROW' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}">${data.action}</span><p class="text-[10px] text-slate-400 mt-1">${time}</p></div>`;
+            history.prepend(div);
+            if (history.children.length > 5) history.lastChild.remove();
+        }
+
+        window.addEventListener('load', startScanner);
+    </script>
+</body>
+</html>
